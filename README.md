@@ -1,6 +1,6 @@
 # 2D Ising Model Monte Carlo Simulation Project
 
-This project implements a Monte Carlo simulation of the 2D Ising Model using the Metropolis-Hastings algorithm to study phase transition phenomena.
+This project implements a Monte Carlo simulation of the 2D Ising Model using the Metropolis-Hastings algorithm to study phase transition phenomena on a 100x100 lattice.
 
 ## Table of Contents
 
@@ -9,44 +9,43 @@ This project implements a Monte Carlo simulation of the 2D Ising Model using the
 3. [Project Structure](#project-structure)
 4. [Dependencies](#dependencies)
 5. [Usage](#usage)
-6. [Stage 1: Basic Simulation](#stage-1-basic-simulation)
-7. [Stage 2: Order Parameter and Susceptibility](#stage-2-order-parameter-and-susceptibility)
-8. [Stage 3: Spin Configuration Visualization](#stage-3-spin-configuration-visualization)
-9. [Results Analysis](#results-analysis)
-10. [References](#references)
+6. [Simulation Details](#simulation-details)
+7. [Results Analysis](#results-analysis)
+8. [References](#references)
 
 ## Project Overview
 
-The 2D Ising model is a classic model in statistical physics for studying phase transitions. This project uses the Monte Carlo method to simulate the 2D Ising model at different temperatures, calculate physical quantities such as magnetization and susceptibility, and investigate the system's phase transition behavior.
+The 2D Ising model is a classic model in statistical physics for studying phase transitions. This project uses the Monte Carlo method (specifically Metropolis-Hastings) to simulate the 2D Ising model at different temperatures on a \(100 \\times 100\) lattice (\(L=50\)). It calculates key physical quantities such as Energy per site and magnetic Susceptibility, and visualizes the system's evolution through animations to investigate the phase transition behavior.
 
 Main objectives:
-1. Implement the Metropolis algorithm to simulate the 2D Ising model
-2. Calculate and plot the magnetization (M) and susceptibility (χ) as functions of inverse temperature (β)
-3. Visualize typical spin configurations at different temperatures
-4. Determine the critical temperature βc
+1. Implement the Metropolis algorithm for the 2D Ising model on a \(100 \\times 100\) grid.
+2. Calculate and plot the average Energy per site \(\\langle E \\rangle / N^2\) and Susceptibility \(\\chi\) as functions of Temperature \(T\).
+3. Visualize typical spin configuration dynamics at different temperatures using animations.
+4. Identify the critical temperature \(T_c\) from the simulation results.
 
 ## Theoretical Background
 
-The Ising model describes a lattice system composed of spins (±1), where each spin interacts with its nearest neighbors. The Hamiltonian of the model is:
+The Ising model describes a lattice system composed of spins (±1), where each spin interacts with its nearest neighbors. The Hamiltonian of the model (with \(J=1\)) is:
 
-H = -J Σ<i,j> s_i s_j
+\[ H = - \\sum_{\\langle i,j \\rangle} s_i s_j \]
 
-where J > 0 represents ferromagnetic coupling. In a two-dimensional system, the theoretically predicted critical inverse temperature is:
+where \(\\langle i,j \\rangle\) denotes summation over nearest-neighbor pairs. In a two-dimensional system, the theoretically predicted critical temperature is:
 
-βc = ln(1 + √2) / 2 ≈ 0.44068...
+\[ T_c = \\frac{2}{\\ln(1 + \\sqrt{2})} \\approx 2.269... \]
 
-Near the critical point, the system transitions from a disordered state (high temperature) to an ordered state (low temperature).
+Below \(T_c\), the system exhibits spontaneous magnetization (ferromagnetic phase), while above \(T_c\), it is in a disordered state (paramagnetic phase).
 
 ## Project Structure
 
 The project consists primarily of a Python file `ising_model.py`, which contains the following logical modules:
 
-1. **LatticeSetup**: Responsible for creating and initializing the lattice, handling periodic boundary conditions
-2. **EnergyCalculator**: Calculates total energy and energy changes
-3. **Observables**: Calculates measurable quantities such as magnetization
-4. **MetropolisStep**: Implements the Metropolis update step
-5. **SimulationRunner**: Controls the entire simulation process
-6. **Visualization Functions**: For result display and analysis
+1.  **LatticeSetup**: Responsible for creating and initializing the lattice, handling periodic boundary conditions.
+2.  **EnergyCalculator**: Calculates total energy and energy changes during updates.
+3.  **Observables**: Calculates measurable quantities such as magnetization and collects measurements.
+4.  **MetropolisStep**: Implements the core Metropolis update step.
+5.  **SimulationRunner**: Controls the simulation process, including equilibration and measurement phases, and returns calculated observables (Energy, Magnetization, Susceptibility).
+6.  **Animation Function**: `create_ising_animation` generates GIF animations of the lattice evolution.
+7.  **Main Block**: Sets parameters, runs the temperature scan, plots results, and generates animations.
 
 ## Dependencies
 
@@ -55,99 +54,75 @@ This project requires the following Python libraries:
 ```bash
 numpy      # Numerical computation
 matplotlib # Result visualization
+imageio    # Saving animations (GIFs)
 ```
 
 You can install them using pip:
 
 ```bash
-pip install numpy matplotlib
+pip install numpy matplotlib imageio
 ```
 
 ## Usage
 
-To run the complete simulation:
+To run the complete simulation (temperature scan, plotting, and animation generation):
 
 ```bash
 python ising_model.py
 ```
 
-This will execute all three stages of calculation: basic simulation, β scanning, and spin configuration visualization.
+This will execute the simulation using the default parameters defined in the script and save the output plots and animations.
 
-To modify parameters, you can edit the `__main__` block in the script:
-- `param_L`: Sets the lattice size (N=2L)
-- `param_eq_sweeps`: Number of equilibration sweeps
-- `param_meas_sweeps`: Number of measurement sweeps
-- `beta_values`: Range of β values
+Current default parameters in the `__main__` block:
+- `param_L = 50` (resulting in a \(N=2L=100 \\times 100\) lattice)
+- `param_eq_sweeps = 500` (Number of equilibration sweeps)
+- `param_meas_sweeps = 1000` (Number of measurement sweeps per temperature point)
+- `temp_values = np.linspace(0.5, 5.0, 30)` (Range of temperatures T to scan)
 
-## Stage 1: Basic Simulation
+## Simulation Details
 
-Stage 1 implements the basic Monte Carlo simulation functionality for the 2D Ising model:
+The simulation proceeds as follows:
 
-1. **Initialization**: Create an N×N lattice with randomly initialized spin states
-2. **Periodic Boundary Conditions**: Correctly handle lattice boundaries
-3. **Energy Calculation**: Calculate the total system energy and the energy change of a single spin flip
-4. **Metropolis Step**: Randomly select spins and decide whether to flip them based on energy change and temperature
-
-Key functions:
-- `initialize_lattice(N, state)`: Create and initialize the lattice
-- `get_neighbor_indices(N, i, j)`: Get neighbor indices under periodic boundary conditions
-- `calculate_energy_change(lattice, N, i, j)`: Calculate the energy change of flipping the spin at position (i,j)
-- `calculate_total_energy(lattice, N)`: Calculate the energy of the entire system
-- `metropolis_step(lattice, N, beta)`: Perform one Metropolis update
-
-## Stage 2: Order Parameter and Susceptibility
-
-Stage 2 extends the functionality of Stage 1, implementing:
-
-1. **Equilibration Phase**: Allow the system to reach thermal equilibrium
-2. **Measurement Phase**: Collect physical quantity measurements after equilibration
-3. **Order Parameter Calculation**: Calculate average magnetization <|M|>
-4. **Susceptibility Calculation**: Calculate magnetic susceptibility χ
-5. **β Scanning**: Run simulations across a series of β values to study phase transitions
-
-Key functions:
-- `calculate_magnetization(lattice, N)`: Calculate magnetization
-- `run_simulation(L, beta, num_equilibration_sweeps, num_measurement_sweeps, ...)`: Execute complete simulation with equilibration and measurement phases
-
-The main program of Stage 2 scans a series of β values and plots curves of <|M|> and χ versus β, used to study phase transitions and determine the critical point βc.
-
-## Stage 3: Spin Configuration Visualization
-
-Stage 3 focuses on the characteristics of spin configurations at different temperatures:
-
-1. **Representative Temperature Selection**: Select three temperature points below, near, and above βc
-2. **Snapshot Collection**: Run simulations at each temperature point and save multiple spin configurations
-3. **Visual Comparison**: Create side-by-side comparison figures showing configuration features at different temperatures
-
-Key functions:
-- `save_lattice_snapshot(lattice, L, beta, snapshot_id, ...)`: Save spin configuration snapshots
-- `run_simulation_with_snapshots(...)`: Run simulation and collect configuration snapshots
-- `visualize_snapshots_grid(...)`: Create grid visualization of multiple snapshots
-
-This stage clearly demonstrates:
-- **Low Temperature**: Highly ordered configurations (large regions of identical spins)
-- **Critical Temperature**: Characteristic scale-free spin clusters of various sizes
-- **High Temperature**: Random disordered spin distribution
+1.  **Temperature Scan**: The script iterates through a range of temperature values \(T\).
+2.  **Simulation per T**: For each \(T\), the corresponding inverse temperature \(\\beta = 1/T\) is calculated.
+3.  **Equilibration**: The system evolves for `param_eq_sweeps` Monte Carlo sweeps to reach thermal equilibrium. A sweep consists of \(N \\times N\) Metropolis steps.
+4.  **Measurement**: After equilibration, the simulation runs for `param_meas_sweeps` sweeps. During this phase, the total energy \(E\) and magnetization \(M\) are measured after each sweep.
+5.  **Averaging**: The average energy per site \(\\langle E \\rangle / N^2\) and the magnetic susceptibility \(\\chi = \\beta N^2 (\\langle M^2 \\rangle - \\langle M \\rangle^2)\) are calculated from the measurements collected during this phase.
+6.  **Plotting**: After scanning all temperatures, the script plots \(\\langle E \\rangle / N^2\) vs \(T\) and \(\\chi\) vs \(T\).
+7.  **Animation**: Finally, simulations are run at three specific \(\\beta\) values (0.3, 0.44, 0.6) corresponding to high, critical, and low temperatures, and the lattice evolution is saved as GIF animations.
 
 ## Results Analysis
 
-The simulation results generate the following output files:
+The simulation generates the following output files:
 
-1. **Phase Transition Curves**: `ising_phase_transition_L{L}_Eq{eq}_Me{meas}.png`
-   - Top plot: <|M|> vs β
-   - Bottom plot: χ vs β
-   - Vertical red line marks the theoretical critical point βc
+1.  **Energy and Susceptibility Plot**: `ising_E_Chi_vs_T_L50_Eq500_Me1000.png`
+    This plot shows the average energy per site and the magnetic susceptibility as functions of temperature.
+    - The energy plot shows a continuous change but with a steep slope (indicating high specific heat) near \(T_c\).
+    - The susceptibility plot exhibits a sharp peak near the theoretical critical temperature \(T_c \\approx 2.269\), clearly signaling the phase transition.
 
-2. **Spin Configuration Comparison**: `ising_configurations_comparison_L{L}.png`
-   - Shows representative spin configurations at different temperatures
+    ![Energy and Susceptibility vs Temperature](ising_E_Chi_vs_T_L50_Eq500_Me1000.png)
 
-Through these analyses, you can:
-- Observe how <|M|> transitions from ~0 at high temperature to ~1 at low temperature
-- Confirm that χ exhibits a peak near βc
-- Intuitively understand spin arrangement characteristics at different temperatures
+2.  **Animations**:
+    - `ising_animation_L50_beta0.300.gif` (High Temperature, \(T \\approx 3.33\))
+    - `ising_animation_L50_beta0.440.gif` (Near Critical Temperature, \(T \\approx 2.27\))
+    - `ising_animation_L50_beta0.600.gif` (Low Temperature, \(T \\approx 1.67\))
+
+    These animations visualize the spin configurations (white for -1, black for +1) evolving over time:
+    - **High Temperature**: Shows a rapidly fluctuating, disordered state (paramagnetic phase).
+    - **Near Critical Temperature**: Displays large-scale fluctuations with clusters of spins of various sizes forming and dissolving, characteristic of critical phenomena.
+    - **Low Temperature**: Shows the system quickly settling into a highly ordered state (ferromagnetic phase) with large domains of aligned spins.
+
+    **High Temperature (β=0.300, T≈3.33):**
+    ![High Temperature Animation](ising_animation_L50_beta0.300.gif)
+
+    **Near Critical Temperature (β=0.440, T≈2.27):**
+    ![Critical Temperature Animation](ising_animation_L50_beta0.440.gif)
+
+    **Low Temperature (β=0.600, T≈1.67):**
+    ![Low Temperature Animation](ising_animation_L50_beta0.600.gif)
 
 ## References
 
-1. Metropolis, N., et al. (1953). *Equation of State Calculations by Fast Computing Machines*. The Journal of Chemical Physics, 21(6), 1087–1092.
-2. Onsager, L. (1944). *Crystal Statistics. I. A Two-Dimensional Model with an Order-Disorder Transition*. Physical Review, 65(3-4), 117–149.
-3. Newman, M. E. J., & Barkema, G. T. (1999). *Monte Carlo Methods in Statistical Physics*. Oxford University Press.
+1.  Metropolis, N., Rosenbluth, A. W., Rosenbluth, M. N., Teller, A. H., & Teller, E. (1953). *Equation of State Calculations by Fast Computing Machines*. The Journal of Chemical Physics, 21(6), 1087–1092.
+2.  Onsager, L. (1944). *Crystal Statistics. I. A Two-Dimensional Model with an Order-Disorder Transition*. Physical Review, 65(3-4), 117–149.
+3.  Newman, M. E. J., & Barkema, G. T. (1999). *Monte Carlo Methods in Statistical Physics*. Oxford University Press.
