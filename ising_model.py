@@ -1,6 +1,7 @@
 import numpy as np
 import random
 import time # Added for timing
+import numba # Added for JIT compilation
 try:
     import matplotlib.pyplot as plt
     import matplotlib.animation as animation
@@ -65,23 +66,35 @@ def get_neighbor_indices(N: int, i: int, j: int) -> tuple[tuple[int, int], tuple
 # ---------------------------
 # Module: EnergyCalculator
 # ---------------------------
+@numba.jit(nopython=True) # Added Numba decorator
 def _sum_neighbor_spins(lattice: np.ndarray, N: int, i: int, j: int) -> int:
-    """Helper function to sum the spins of the four neighbors of site (i, j)."""
-    up, down, left, right = get_neighbor_indices(N, i, j)
-    neighbor_sum = (
-        lattice[up] +
-        lattice[down] +
-        lattice[left] +
-        lattice[right]
-    )
-    return neighbor_sum
+    """
+    Calculates the sum of spins of the four nearest neighbors for site (i, j).
+    Uses periodic boundary conditions implicitly via modulo arithmetic.
+    (Helper function)
 
+    Args:
+        lattice: The current NxN lattice configuration.
+        N: The dimension of the lattice.
+        i: The row index.
+        j: The column index.
+
+    Returns:
+        Sum of the four neighbor spins.
+    """
+    # Calculate neighbor indices with periodic boundary conditions
+    top    = lattice[(i - 1 + N) % N, j]
+    bottom = lattice[(i + 1) % N, j]
+    left   = lattice[i, (j - 1 + N) % N]
+    right  = lattice[i, (j + 1) % N]
+    return top + bottom + left + right
+
+@numba.jit(nopython=True) # Added Numba decorator
 def calculate_energy_change(lattice: np.ndarray, N: int, i: int, j: int) -> int:
     """
-    Calculates the change in energy if the spin at (i, j) is flipped.
-    Assumes the standard ferromagnetic Ising Hamiltonian H = - Sum_{<ij>} s_i s_j.
-    (Corresponds to EnergyCalculator.calculate_energy_change in the plan)
-    Delta_H = H_new - H_old = 2 * s_ij * sum(neighbors).
+    Calculates the energy change if the spin at (i, j) were flipped.
+    Delta H = H_final - H_initial = - Sum_{k neighbors} s_new s_k - (- Sum_{k neighbors} s_old s_k)
+            = - (-s_old) Sum s_k + (-s_old) Sum s_k = 2 * s_old * Sum_{k neighbors} s_k
 
     Args:
         lattice: The current NxN lattice configuration.
@@ -97,11 +110,11 @@ def calculate_energy_change(lattice: np.ndarray, N: int, i: int, j: int) -> int:
     delta_H = 2 * s_ij * neighbor_sum
     return delta_H
 
+@numba.jit(nopython=True) # Added Numba decorator
 def calculate_total_energy(lattice: np.ndarray, N: int) -> int:
     """
     Calculates the total energy of the lattice configuration.
     Assumes the standard ferromagnetic Ising Hamiltonian H = - Sum_{<ij>} s_i s_j.
-    (Corresponds to EnergyCalculator.calculate_total_energy in the plan)
     Iterates through each site and sums the interaction with right and down neighbors
     to avoid double counting.
 
@@ -116,19 +129,20 @@ def calculate_total_energy(lattice: np.ndarray, N: int) -> int:
     for i in range(N):
         for j in range(N):
             s_ij = lattice[i,j]
-            right_neighbor_idx = (i, (j + 1) % N)
-            bottom_neighbor_idx = ((i + 1) % N, j)
-            total_energy += -s_ij * lattice[right_neighbor_idx]
-            total_energy += -s_ij * lattice[bottom_neighbor_idx]
+            # Only sum right and bottom neighbors to avoid double count
+            right_neighbor = lattice[i, (j + 1) % N]
+            bottom_neighbor = lattice[(i + 1) % N, j]
+            total_energy += -s_ij * right_neighbor
+            total_energy += -s_ij * bottom_neighbor
     return total_energy
 
 # ---------------------------
 # Module: Observables (for Stage 2)
 # ---------------------------
+@numba.jit(nopython=True) # Added Numba decorator
 def calculate_magnetization(lattice: np.ndarray, N: int) -> float:
     """
     Calculates the average magnetization per spin for the lattice.
-    (Corresponds to Observables.calculate_magnetization in the plan)
     M = (1/N^2) * Sum_{i,j} s_ij
 
     Args:
@@ -136,14 +150,15 @@ def calculate_magnetization(lattice: np.ndarray, N: int) -> float:
         N: The dimension of the lattice.
 
     Returns:
-        The average magnetization.
+        The average magnetization (float, between -1 and 1).
     """
-    total_spin = np.sum(lattice)
+    total_spin = np.sum(lattice) # Numba handles np.sum
     return total_spin / (N * N)
 
 # ---------------------------
 # Module: MetropolisStep
 # ---------------------------
+@numba.jit(nopython=True) # Added Numba decorator
 def metropolis_step(lattice: np.ndarray, N: int, beta: float) -> bool:
     """
     Performs a single Metropolis update step:
@@ -160,7 +175,7 @@ def metropolis_step(lattice: np.ndarray, N: int, beta: float) -> bool:
     Returns:
         True if the flip was accepted, False otherwise.
     """
-    # 1. Select a random spin site
+    # 1. Select a random spin site (Numba compatible random choice)
     i = random.randint(0, N - 1)
     j = random.randint(0, N - 1)
 
@@ -168,16 +183,19 @@ def metropolis_step(lattice: np.ndarray, N: int, beta: float) -> bool:
     delta_H = calculate_energy_change(lattice, N, i, j)
 
     # 3. Metropolis acceptance criteria
+    accept = False
     if delta_H <= 0:
-        lattice[i, j] *= -1
-        return True
+        accept = True
     else:
         acceptance_prob = np.exp(-beta * delta_H)
         if random.random() < acceptance_prob:
-            lattice[i, j] *= -1
-            return True
-        else:
-            return False
+            accept = True
+
+    if accept:
+        lattice[i, j] *= -1
+        return True
+    else:
+        return False
 
 # ---------------------------
 # Module: SimulationRunner (Core Logic)
@@ -519,15 +537,20 @@ if __name__ == '__main__':
     param_eq_sweeps = 500
     param_meas_sweeps = 1000
 
-    # --- Scan over Temperature T ---
-    # Define Temperature range (e.g., 0.5 to 5.0)
-    num_temp_points = 30 # Number of points to simulate
-    temp_values = np.linspace(0.5, 5.0, num_temp_points)
+    # --- Scan over Temperature T with denser sampling near Tc ~ 2.269 ---
+    # Define Temperature points with concentration around Tc
+    T_low = np.linspace(0.5, 2.1, 15, endpoint=False) # 15 points below 2.1
+    T_crit = np.linspace(2.1, 2.4, 25) # 25 points in the critical region [2.1, 2.4]
+    T_high = np.linspace(2.4, 5.0, 15, endpoint=True)[1:] # 14 points above 2.4 (start from index 1 to avoid duplicate 2.4)
+    temp_values = np.unique(np.concatenate((T_low, T_crit, T_high))) # Combine and remove duplicates
+    num_temp_points = len(temp_values) # Get the actual number of points
+
     # Avoid T=0 directly, as beta -> infinity
     beta_values = 1.0 / temp_values # Calculate corresponding beta values
 
     print(f"Scanning {num_temp_points} Temperature values from {temp_values[0]:.3f} to {temp_values[-1]:.3f}")
-    print(f"(Corresponding beta range: {beta_values[-1]:.3f} to {beta_values[0]:.3f})") # Note beta order reversed
+    print(f"Concentrated sampling around Tc ~ 2.269")
+    print(f"(Corresponding beta range: {beta_values[-1]:.3f} to {beta_values[0]:.3f})")
     print(f"Using L={param_L}, EqSweeps={param_eq_sweeps}, MeasSweeps={param_meas_sweeps}")
 
     # --- Run Simulations ---
@@ -559,7 +582,7 @@ if __name__ == '__main__':
     # --- Plotting Results vs Temperature ---
     if MATPLOTLIB_AVAILABLE and results_T:
         print("Plotting results...")
-        fig, axs = plt.subplots(1, 2, figsize=(14, 6)) # 1 row, 2 columns
+        fig, axs = plt.subplots(1, 3, figsize=(21, 6)) # 1 row, 3 columns
 
         # Theoretical critical temperature for 2D Ising model
         Tc_exact = 2.0 / np.log(1 + np.sqrt(2)) # Approx 2.269
@@ -573,20 +596,29 @@ if __name__ == '__main__':
         axs[0].legend()
         axs[0].grid(True, linestyle=':', alpha=0.7)
 
-        # Plot 2: Susceptibility vs Temperature (Reverted to Chi)
-        axs[1].plot(results_T, results_Chi, 'o', linestyle='-', color='mediumseagreen', label='Simulation Data $\\chi$') # Changed to Chi, updated color/label
+        # Plot 2: Magnetization vs Temperature (Added)
+        axs[1].plot(results_T, results_M, 'o', linestyle='-', color='royalblue', label='Simulation Data $\\langle |M| \\rangle$')
         axs[1].axvline(Tc_exact, color='gray', linestyle='--', label=f'Exact $T_c \\approx {Tc_exact:.3f}$')
         axs[1].set_xlabel("Temperature (T)")
-        axs[1].set_ylabel("Susceptibility $\\chi$") # Updated Y label
-        axs[1].set_title(f"Susceptibility vs Temperature (L={param_L})") # Updated title
+        axs[1].set_ylabel("Magnetization $\\langle |M| \\rangle$")
+        axs[1].set_title(f"Magnetization vs Temperature (L={param_L})")
         axs[1].legend()
         axs[1].grid(True, linestyle=':', alpha=0.7)
 
+        # Plot 3: Susceptibility vs Temperature
+        axs[2].plot(results_T, results_Chi, 'o', linestyle='-', color='mediumseagreen', label='Simulation Data $\\chi$')
+        axs[2].axvline(Tc_exact, color='gray', linestyle='--', label=f'Exact $T_c \\approx {Tc_exact:.3f}$')
+        axs[2].set_xlabel("Temperature (T)")
+        axs[2].set_ylabel("Susceptibility $\\chi$")
+        axs[2].set_title(f"Susceptibility vs Temperature (L={param_L})")
+        axs[2].legend()
+        axs[2].grid(True, linestyle=':', alpha=0.7)
+
         fig.tight_layout(pad=3.0)
         # Update plot filename to reflect content
-        plot_filename = f'ising_E_Chi_vs_T_L{param_L}_Eq{param_eq_sweeps}_Me{param_meas_sweeps}.png'
+        plot_filename = f'ising_E_M_Chi_vs_T_L{param_L}_Eq{param_eq_sweeps}_Me{param_meas_sweeps}.png'
         plt.savefig(plot_filename)
-        print(f"Energy and Susceptibility plots saved to {plot_filename}") # Updated print message
+        print(f"Energy, Magnetization and Susceptibility plots saved to {plot_filename}") # Updated print message
     elif not MATPLOTLIB_AVAILABLE:
          print("\nMatplotlib not found. Cannot create plots.")
     else:

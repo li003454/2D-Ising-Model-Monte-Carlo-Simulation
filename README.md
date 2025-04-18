@@ -10,8 +10,9 @@ This project implements a Monte Carlo simulation of the 2D Ising Model using the
 4. [Dependencies](#dependencies)
 5. [Usage](#usage)
 6. [Simulation Details](#simulation-details)
-7. [Results Analysis](#results-analysis)
-8. [References](#references)
+7. [Performance and Accuracy Improvements](#performance-and-accuracy-improvements)
+8. [Results Analysis](#results-analysis)
+9. [References](#references)
 
 ## Project Overview
 
@@ -87,20 +88,30 @@ The simulation proceeds as follows:
 2.  **Simulation per T**: For each \(T\), the corresponding inverse temperature \(\\beta = 1/T\) is calculated.
 3.  **Equilibration**: The system evolves for `param_eq_sweeps` Monte Carlo sweeps to reach thermal equilibrium. A sweep consists of \(N \\times N\) Metropolis steps.
 4.  **Measurement**: After equilibration, the simulation runs for `param_meas_sweeps` sweeps. During this phase, the total energy \(E\) and magnetization \(M\) are measured after each sweep.
-5.  **Averaging**: The average energy per site \(\\langle E \\rangle / N^2\) and the magnetic susceptibility \(\\chi = \\beta N^2 (\\langle M^2 \\rangle - \\langle M \\rangle^2)\) are calculated from the measurements collected during this phase.
-6.  **Plotting**: After scanning all temperatures, the script plots \(\\langle E \\rangle / N^2\) vs \(T\) and \(\\chi\) vs \(T\).
+5.  **Averaging**: The average energy per site \(\\langle E \\rangle / N^2\), average absolute magnetization \(\\langle |M| \\rangle\), and the magnetic susceptibility \(\\chi = \\beta N^2 (\\langle M^2 \\rangle - \\langle M \\rangle^2)\) are calculated from the measurements collected during this phase.
+6.  **Plotting**: After scanning all temperatures, the script plots \(\\langle E \\rangle / N^2\), \(\\langle |M| \\rangle\), and \(\\chi\) vs \(T\) side-by-side.
 7.  **Animation**: Finally, simulations are run at three specific \(\\beta\) values (0.3, 0.44, 0.6) corresponding to high, critical, and low temperatures, and the lattice evolution is saved as GIF animations.
+
+## Performance and Accuracy Improvements
+
+To enhance the simulation's speed and the clarity of the phase transition, the following improvements have been implemented:
+
+1.  **Numba Acceleration**: The core computational functions (`metropolis_step`, `calculate_energy_change`, `calculate_total_energy`, `calculate_magnetization`, `_sum_neighbor_spins`) are decorated with `@numba.jit(nopython=True)`. This utilizes the Numba Just-In-Time (JIT) compiler to translate these Python functions into optimized machine code, resulting in a significant speedup (potentially >10x) for the simulation loop.
+2.  **Refined Temperature Sampling**: Instead of uniformly spaced temperature points, the sampling is now concentrated near the theoretical critical temperature (\(T_c \\approx 2.269\)). More points are used in the range `[2.1, 2.4]` where the phase transition occurs, allowing for a more detailed resolution of the peak in susceptibility and the sharp changes in energy and magnetization, while using fewer points in regions far from \(T_c\).
+
+These improvements allow for faster execution and a clearer visualization of the critical phenomena with the current simulation parameters.
 
 ## Results Analysis
 
 The simulation generates the following output files:
 
-1.  **Energy and Susceptibility Plot**: `ising_E_Chi_vs_T_L50_Eq500_Me1000.png`
-    This plot shows the average energy per site and the magnetic susceptibility as functions of temperature.
+1.  **Energy, Magnetization, and Susceptibility Plot**: `ising_E_M_Chi_vs_T_L50_Eq500_Me1000.png`
+    This plot shows the average energy per site, average absolute magnetization, and the magnetic susceptibility as functions of temperature in three side-by-side panels.
     - The energy plot shows a continuous change but with a steep slope (indicating high specific heat) near \(T_c\).
-    - The susceptibility plot exhibits a sharp peak near the theoretical critical temperature \(T_c \\approx 2.269\), clearly signaling the phase transition.
+    - The magnetization plot clearly shows the transition from a disordered state (\(\\langle |M| \\rangle \\approx 0\)) at high T to an ordered state (\(\\langle |M| \\rangle \\to 1\)) at low T.
+    - The susceptibility plot exhibits a sharp peak near the theoretical critical temperature \(T_c \\approx 2.269\), clearly signaling the phase transition. The denser sampling around \(T_c\) helps resolve the peak's shape.
 
-    ![Energy and Susceptibility vs Temperature](ising_E_Chi_vs_T_L50_Eq500_Me1000.png)
+    ![Energy, Magnetization, and Susceptibility vs Temperature](ising_E_M_Chi_vs_T_L50_Eq500_Me1000.png)
 
 2.  **Animations**:
     - `ising_animation_L50_beta0.300.gif` (High Temperature, \(T \\approx 3.33\))
