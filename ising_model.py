@@ -2,6 +2,7 @@ import numpy as np
 import random
 import time # Added for timing
 import numba # Added for JIT compilation
+from numba import prange # Added for parallel loops
 try:
     import matplotlib.pyplot as plt
     import matplotlib.animation as animation
@@ -66,7 +67,7 @@ def get_neighbor_indices(N: int, i: int, j: int) -> tuple[tuple[int, int], tuple
 # ---------------------------
 # Module: EnergyCalculator
 # ---------------------------
-@numba.jit(nopython=True) # Added Numba decorator
+@numba.jit(nopython=True) # Standard JIT compilation
 def _sum_neighbor_spins(lattice: np.ndarray, N: int, i: int, j: int) -> int:
     """
     Calculates the sum of spins of the four nearest neighbors for site (i, j).
@@ -89,7 +90,7 @@ def _sum_neighbor_spins(lattice: np.ndarray, N: int, i: int, j: int) -> int:
     right  = lattice[i, (j + 1) % N]
     return top + bottom + left + right
 
-@numba.jit(nopython=True) # Added Numba decorator
+@numba.jit(nopython=True) # Standard JIT compilation
 def calculate_energy_change(lattice: np.ndarray, N: int, i: int, j: int) -> int:
     """
     Calculates the energy change if the spin at (i, j) were flipped.
@@ -110,13 +111,13 @@ def calculate_energy_change(lattice: np.ndarray, N: int, i: int, j: int) -> int:
     delta_H = 2 * s_ij * neighbor_sum
     return delta_H
 
-@numba.jit(nopython=True) # Added Numba decorator
+@numba.jit(nopython=True, parallel=True) # This function benefits from parallelization
 def calculate_total_energy(lattice: np.ndarray, N: int) -> int:
     """
     Calculates the total energy of the lattice configuration.
     Assumes the standard ferromagnetic Ising Hamiltonian H = - Sum_{<ij>} s_i s_j.
     Iterates through each site and sums the interaction with right and down neighbors
-    to avoid double counting.
+    to avoid double counting. Uses parallel loops for better performance.
 
     Args:
         lattice: The current NxN lattice configuration.
@@ -126,20 +127,23 @@ def calculate_total_energy(lattice: np.ndarray, N: int) -> int:
         The total energy H.
     """
     total_energy = 0
-    for i in range(N):
+    # Use prange for parallelization when possible
+    for i in prange(N):
+        row_energy = 0
         for j in range(N):
             s_ij = lattice[i,j]
             # Only sum right and bottom neighbors to avoid double count
             right_neighbor = lattice[i, (j + 1) % N]
             bottom_neighbor = lattice[(i + 1) % N, j]
-            total_energy += -s_ij * right_neighbor
-            total_energy += -s_ij * bottom_neighbor
+            row_energy += -s_ij * right_neighbor
+            row_energy += -s_ij * bottom_neighbor
+        total_energy += row_energy
     return total_energy
 
 # ---------------------------
 # Module: Observables (for Stage 2)
 # ---------------------------
-@numba.jit(nopython=True) # Added Numba decorator
+@numba.jit(nopython=True) # Standard JIT compilation
 def calculate_magnetization(lattice: np.ndarray, N: int) -> float:
     """
     Calculates the average magnetization per spin for the lattice.
@@ -158,7 +162,7 @@ def calculate_magnetization(lattice: np.ndarray, N: int) -> float:
 # ---------------------------
 # Module: MetropolisStep
 # ---------------------------
-@numba.jit(nopython=True) # Added Numba decorator
+@numba.jit(nopython=True) # Standard JIT compilation
 def metropolis_step(lattice: np.ndarray, N: int, beta: float) -> bool:
     """
     Performs a single Metropolis update step:
@@ -197,10 +201,35 @@ def metropolis_step(lattice: np.ndarray, N: int, beta: float) -> bool:
     else:
         return False
 
+# Optimized version for performing many metropolis steps at once
+@numba.jit(nopython=True) # Standard JIT compilation
+def metropolis_sweep(lattice: np.ndarray, N: int, beta: float, num_steps: int) -> int:
+    """
+    Performs multiple Metropolis steps and returns the number of accepted flips.
+    This is more efficient than calling metropolis_step in a Python loop
+    since the entire loop is JIT compiled.
+    
+    Args:
+        lattice: The current NxN lattice configuration (modified in place).
+        N: The dimension of the lattice.
+        beta: The inverse temperature (1 / kT).
+        num_steps: Number of individual steps to perform.
+        
+    Returns:
+        Number of accepted spin flips.
+    """
+    accepted_count = 0
+    for _ in range(num_steps):
+        if metropolis_step(lattice, N, beta):
+            accepted_count += 1
+    return accepted_count
+
 # ---------------------------
 # Module: SimulationRunner (Core Logic)
 # ---------------------------
-def run_simulation(L: int, beta: float, num_equilibration_sweeps: int, num_measurement_sweeps: int, initial_state: str = 'random', visualize_final_state: bool = False):
+def run_simulation(L: int, beta: float, num_equilibration_sweeps: int, num_measurement_sweeps: int, 
+                  initial_state: str = 'random', visualize_final_state: bool = False, 
+                  use_annealing: bool = False, bin_size: int = 10):
     """
     Runs the 2D Ising model simulation with equilibration and measurement phases.
     Calculates average magnetization, susceptibility, and energy per site.
@@ -212,6 +241,8 @@ def run_simulation(L: int, beta: float, num_equilibration_sweeps: int, num_measu
         num_measurement_sweeps: Number of MC sweeps for measurement.
         initial_state: Initial lattice configuration ('random', 'up', 'down').
         visualize_final_state: Whether to plot the final lattice state.
+        use_annealing: Whether to use simulated annealing before equilibration.
+        bin_size: Number of measurements to group together for binning analysis.
 
     Returns:
         A tuple containing:
@@ -222,58 +253,115 @@ def run_simulation(L: int, beta: float, num_equilibration_sweeps: int, num_measu
         - lattice (np.ndarray): The final lattice configuration.
     """
     N = 2 * L
+    T = 1.0 / beta  # Current temperature
     equilibration_steps = num_equilibration_sweeps * N * N
     measurement_steps = num_measurement_sweeps * N * N
     total_steps = equilibration_steps + measurement_steps
 
-    print(f"--- Running Ising Simulation for beta={beta:.4f} (T={1/beta:.4f}) ---") # Added T display
+    print(f"--- Running Ising Simulation for beta={beta:.4f} (T={T:.4f}) ---")
     print(f" L={L}, N={N}x{N}, EqSweeps={num_equilibration_sweeps}, MeasSweeps={num_measurement_sweeps}, Initial='{initial_state}'")
 
     # Initialization
     start_time = time.time()
     lattice = initialize_lattice(N, state=initial_state)
 
+    # --- Simulated Annealing Phase (if enabled) ---
+    if use_annealing:
+        annealing_steps = int(0.5 * equilibration_steps)  # Use 50% of equilibration steps for annealing
+        print(f" Starting Simulated Annealing ({annealing_steps} steps)...")
+        
+        # Start from higher temperature (2T) and gradually cool down to target T
+        start_T = min(5.0, 2.0 * T)  # Cap starting T at 5.0 to avoid too high temperatures
+        start_beta = 1.0 / start_T
+        
+        cooling_schedule = np.linspace(start_beta, beta, 10)  # 10 temperature steps
+        steps_per_temp = annealing_steps // len(cooling_schedule)
+        
+        for annealing_beta in cooling_schedule:
+            # Use optimized sweep function instead of individual steps
+            accepted = metropolis_sweep(lattice, N, annealing_beta, steps_per_temp * N * N)
+            current_T = 1.0 / annealing_beta
+            print(f"  Annealing at T={current_T:.4f} (beta={annealing_beta:.4f}) completed.")
+        
+        print(" Annealing finished.")
+        
+        # Adjust remaining equilibration steps
+        equilibration_steps -= annealing_steps
+
     # --- Equilibration Phase ---
     print(f" Starting Equilibration ({equilibration_steps} steps)...")
-    for step in range(equilibration_steps):
-        metropolis_step(lattice, N, beta)
-    print(" Equilibration finished.")
+    # Use optimized sweep function instead of step-by-step loop
+    eq_accepted = metropolis_sweep(lattice, N, beta, equilibration_steps)
+    eq_acceptance_rate = eq_accepted / equilibration_steps if equilibration_steps > 0 else 0
+    print(f" Equilibration finished. Acceptance rate: {eq_acceptance_rate:.4f}")
 
-    # --- Measurement Phase ---
+    # --- Measurement Phase with improved strategy ---
     print(f" Starting Measurement ({measurement_steps} steps)...")
     magnetization_measurements = []
-    energy_measurements = [] # Added list for energy
+    energy_measurements = []
     accepted_flips_measurement = 0
-
-    for step in range(measurement_steps):
-        accepted = metropolis_step(lattice, N, beta)
-        if accepted:
-            accepted_flips_measurement += 1
-
-        # Measure after each SWEEP
-        if (step + 1) % (N * N) == 0:
-            current_M = calculate_magnetization(lattice, N)
-            current_E = calculate_total_energy(lattice, N) # Calculate energy
-            magnetization_measurements.append(current_M)
-            energy_measurements.append(current_E) # Store energy
+    
+    # Increase interval between measurements to reduce correlations
+    # Take fewer measurements but with larger interval between them
+    measure_interval = 5 * N * N  # Every 5 sweeps instead of every sweep
+    num_actual_measurements = measurement_steps // measure_interval
+    
+    # Perform measurements with intervals
+    remaining_steps = 0
+    for m in range(num_actual_measurements):
+        # Run simulation for measure_interval steps
+        accepted = metropolis_sweep(lattice, N, beta, measure_interval)
+        accepted_flips_measurement += accepted
+        
+        # Take measurements
+        current_M = calculate_magnetization(lattice, N)
+        current_E = calculate_total_energy(lattice, N)
+        magnetization_measurements.append(current_M)
+        energy_measurements.append(current_E)
+    
+    # Run any remaining steps
+    remaining_steps = measurement_steps - (num_actual_measurements * measure_interval)
+    if remaining_steps > 0:
+        accepted = metropolis_sweep(lattice, N, beta, remaining_steps)
+        accepted_flips_measurement += accepted
+    
+    print(f" Took {len(magnetization_measurements)} measurements with {measure_interval//(N*N)} sweeps between each.")
     print(" Measurement finished.")
 
-    # --- Analysis of Measurements ---
+    # --- Analysis of Measurements with binning ---
     if not magnetization_measurements:
         print(" Warning: No measurements collected.")
         mean_M = np.nan
         mean_M_sq = np.nan
         susceptibility = np.nan
-        mean_E_per_site = np.nan # Added
+        mean_E_per_site = np.nan
     else:
         measurements_array = np.array(magnetization_measurements)
-        energy_array = np.array(energy_measurements) # Added
-
-        mean_M = np.mean(np.abs(measurements_array))
-        mean_M_sq = np.mean(measurements_array**2)
+        energy_array = np.array(energy_measurements)
+        
+        # Perform binning to reduce correlations (if we have enough measurements)
+        if len(measurements_array) >= bin_size:
+            num_bins = len(measurements_array) // bin_size
+            # Reshape the arrays to group measurements into bins
+            binned_M = measurements_array[:num_bins*bin_size].reshape(num_bins, bin_size)
+            binned_E = energy_array[:num_bins*bin_size].reshape(num_bins, bin_size)
+            
+            # Calculate bin averages
+            bin_M_avgs = np.mean(binned_M, axis=1)
+            bin_E_avgs = np.mean(binned_E, axis=1)
+            
+            # Use bin averages for final calculations
+            mean_M = np.mean(np.abs(bin_M_avgs))
+            mean_M_sq = np.mean(bin_M_avgs**2)
+            mean_E_per_site = np.mean(bin_E_avgs) / (N * N)
+        else:
+            # Fall back to regular calculation if not enough measurements for binning
+            mean_M = np.mean(np.abs(measurements_array))
+            mean_M_sq = np.mean(measurements_array**2)
+            mean_E_per_site = np.mean(energy_array) / (N * N)
+        
+        # Regular susceptibility calculation
         susceptibility = beta * (N**2) * (mean_M_sq - np.mean(measurements_array)**2)
-
-        mean_E_per_site = np.mean(energy_array) / (N * N) # Calculate mean energy per site
 
     end_time = time.time()
     total_time = end_time - start_time
@@ -284,10 +372,10 @@ def run_simulation(L: int, beta: float, num_equilibration_sweeps: int, num_measu
 
     # Visualization (Optional - only the final state)
     if visualize_final_state and MATPLOTLIB_AVAILABLE:
-        final_energy = calculate_total_energy(lattice, N) # Already calculated if needed for title
+        final_energy = calculate_total_energy(lattice, N)
         plt.figure(figsize=(6, 6))
         plt.imshow(lattice, cmap='binary', vmin=-1, vmax=1, interpolation='nearest')
-        plt.title(f"Final State (L={L}, beta={beta:.3f}, EqS={num_equilibration_sweeps}, MeS={num_measurement_sweeps}, E/N^2={final_energy/(N*N):.3f})") # Added energy to title
+        plt.title(f"Final State (L={L}, beta={beta:.3f}, EqS={num_equilibration_sweeps}, MeS={num_measurement_sweeps}, E/N^2={final_energy/(N*N):.3f})")
         plt.xticks([])
         plt.yticks([])
         filename = f'ising_final_state_L{L}_beta{beta:.3f}_Eq{num_equilibration_sweeps}_Me{num_measurement_sweeps}.png'
@@ -297,7 +385,7 @@ def run_simulation(L: int, beta: float, num_equilibration_sweeps: int, num_measu
         print("\nMatplotlib not found. Cannot visualize the final state.")
 
     # Return calculated observables and the final lattice
-    return beta, mean_M, susceptibility, mean_E_per_site, lattice # Added mean_energy_per_site
+    return beta, mean_M, susceptibility, mean_E_per_site, lattice
 
 # ---------------------------
 # Module: Animation (New functionality)
@@ -327,10 +415,12 @@ def create_ising_animation(L: int, beta: float, num_frames: int, interval_sweeps
     # Initialize lattice
     lattice = initialize_lattice(N, state=initial_state)
     
-    # Equilibrate first
+    # Equilibrate first using optimized sweep function
     print(f"Equilibrating for {equilibrate_sweeps} sweeps...")
-    for _ in range(equilibrate_sweeps * N * N):
-        metropolis_step(lattice, N, beta)
+    equilibrate_steps = equilibration_sweeps = equilibrate_sweeps * N * N
+    eq_accepted = metropolis_sweep(lattice, N, beta, equilibrate_steps)
+    eq_acceptance_rate = eq_accepted / equilibrate_steps if equilibrate_steps > 0 else 0
+    print(f"Equilibration finished. Acceptance rate: {eq_acceptance_rate:.4f}")
     
     # Set up the figure and axis
     fig, ax = plt.subplots(figsize=(8, 8))
@@ -341,7 +431,7 @@ def create_ising_animation(L: int, beta: float, num_frames: int, interval_sweeps
     
     # Initial plot
     im = ax.imshow((lattice + 1) // 2, cmap=cmap, interpolation='nearest', vmin=0, vmax=1)
-    ax.set_title(f"2D Ising Model (L={L}, β={beta:.3f})")
+    ax.set_title(f"2D Ising Model (L={L}, β={beta:.3f}, T={1/beta:.3f})")
     ax.set_xticks([])
     ax.set_yticks([])
     
@@ -353,9 +443,9 @@ def create_ising_animation(L: int, beta: float, num_frames: int, interval_sweeps
     
     # Update function for animation
     def update(frame):
-        # Run simulation for interval_sweeps sweeps
-        for _ in range(interval_sweeps * N * N):
-            metropolis_step(lattice, N, beta)
+        # Run simulation for interval_sweeps sweeps using optimized sweep function
+        steps = interval_sweeps * N * N
+        metropolis_sweep(lattice, N, beta, steps)
         
         # Update the plot
         im.set_array((lattice + 1) // 2)
@@ -534,8 +624,9 @@ def visualize_snapshots_grid(snapshot_files, title, output_filename):
 if __name__ == '__main__':
     # --- Parameters for 100x100 grid (L=50) ---
     param_L = 50  # Half the linear size of the grid (N=2L=100)
-    param_eq_sweeps = 500
-    param_meas_sweeps = 1000
+    param_eq_sweeps = 5000 # Increased from 500 to 5000 for better equilibration
+    param_meas_sweeps = 10000 # Increased from 1000 to 10000 for better statistics
+    param_bin_size = 10  # Bin size for measurement binning
 
     # --- Scan over Temperature T with denser sampling near Tc ~ 2.269 ---
     # Define Temperature points with concentration around Tc
@@ -552,22 +643,34 @@ if __name__ == '__main__':
     print(f"Concentrated sampling around Tc ~ 2.269")
     print(f"(Corresponding beta range: {beta_values[-1]:.3f} to {beta_values[0]:.3f})")
     print(f"Using L={param_L}, EqSweeps={param_eq_sweeps}, MeasSweeps={param_meas_sweeps}")
+    print(f"Using data binning with bin_size={param_bin_size}")
+    print(f"Using temperature-dependent initialization WITHOUT annealing")
 
     # --- Run Simulations ---
     scan_start_time = time.time()
     results_T = []
     results_M = [] # Store <|M|>
-    results_Chi = [] # Store susceptibility (though not plotting it now)
+    results_Chi = [] # Store susceptibility
     results_E = [] # Store <E>/N^2
 
     for T, beta in zip(temp_values, beta_values):
-        # Call simulation function
+        # Temperature-dependent initialization strategy
+        if T < 2.0:  # Low temperature (ordered phase)
+            initial_state = 'up'  # Start from ordered state
+        elif T < 2.5:  # Near critical (T_c ≈ 2.269)
+            initial_state = 'random'  # Random state
+        else:  # High temperature (disordered phase)
+            initial_state = 'random'  # Random state is good
+        
+        # Call simulation function with improved strategies but NO annealing
         res_beta, res_M, res_Chi, res_E, _ = run_simulation(
             L=param_L,
             beta=beta,
             num_equilibration_sweeps=param_eq_sweeps,
             num_measurement_sweeps=param_meas_sweeps,
-            initial_state='random'
+            initial_state=initial_state,
+            use_annealing=False,  # Disable annealing for all points
+            bin_size=param_bin_size
         )
         # Store results
         results_T.append(T)
@@ -596,7 +699,7 @@ if __name__ == '__main__':
         axs[0].legend()
         axs[0].grid(True, linestyle=':', alpha=0.7)
 
-        # Plot 2: Magnetization vs Temperature (Added)
+        # Plot 2: Magnetization vs Temperature
         axs[1].plot(results_T, results_M, 'o', linestyle='-', color='royalblue', label='Simulation Data $\\langle |M| \\rangle$')
         axs[1].axvline(Tc_exact, color='gray', linestyle='--', label=f'Exact $T_c \\approx {Tc_exact:.3f}$')
         axs[1].set_xlabel("Temperature (T)")
@@ -615,34 +718,65 @@ if __name__ == '__main__':
         axs[2].grid(True, linestyle=':', alpha=0.7)
 
         fig.tight_layout(pad=3.0)
-        # Update plot filename to reflect content
-        plot_filename = f'ising_E_M_Chi_vs_T_L{param_L}_Eq{param_eq_sweeps}_Me{param_meas_sweeps}.png'
+        # Update plot filename to reflect the enhanced methodology
+        plot_filename = f'ising_E_M_Chi_vs_T_L{param_L}_Eq{param_eq_sweeps}_Me{param_meas_sweeps}_enhanced.png'
         plt.savefig(plot_filename)
-        print(f"Energy, Magnetization and Susceptibility plots saved to {plot_filename}") # Updated print message
+        print(f"Energy, Magnetization and Susceptibility plots saved to {plot_filename}")
     elif not MATPLOTLIB_AVAILABLE:
          print("\nMatplotlib not found. Cannot create plots.")
     else:
          print("\nNo results to plot.")
 
-    # --- Animation Generation (Keep as before, using specific beta values) ---
+    # --- Generate Animations at different temperatures ---
     if MATPLOTLIB_AVAILABLE and IMAGEIO_AVAILABLE:
-        print("\n--- Creating Ising Model Animations ---")
-        # Use beta values corresponding to high T, near Tc, and low T
-        # T = 3.33 -> beta = 0.3
-        # T = 2.27 -> beta = 0.44 (approx Tc)
-        # T = 1.67 -> beta = 0.6
-        animation_betas = [0.300, 0.440, 0.600]
-        for anim_beta in animation_betas:
-            create_ising_animation(
-                L=param_L,
-                beta=anim_beta,
-                num_frames=40, # Number of frames in the animation
-                interval_sweeps=10, # Sweeps between frames
-                equilibrate_sweeps=param_eq_sweeps # Use same equilibration
-            )
-    elif not MATPLOTLIB_AVAILABLE:
-        print("\nMatplotlib not found. Cannot create animations.")
-    elif not IMAGEIO_AVAILABLE:
-        print("\nImageio not found. Cannot create animations.")
+        print("\n--- Generating Animations ---")
+        
+        # Animation parameters
+        animation_frames = 40
+        animation_interval_sweeps = 10
+        animation_equilibrate_sweeps = 100
+        
+        # 1. Low Temperature (T ≈ 1.67, beta = 0.6)
+        low_beta = 0.6
+        low_temp = 1 / low_beta
+        print(f"\nGenerating animation for low temperature (T={low_temp:.4f}, beta={low_beta:.4f})...")
+        create_ising_animation(
+            L=param_L, 
+            beta=low_beta, 
+            num_frames=animation_frames, 
+            interval_sweeps=animation_interval_sweeps,
+            initial_state='up',  # Ordered state for low temp
+            equilibrate_sweeps=animation_equilibrate_sweeps
+        )
+        
+        # 2. Critical Temperature (T ≈ 2.269)
+        crit_temp = Tc_exact
+        crit_beta = 1.0 / crit_temp
+        print(f"\nGenerating animation for critical temperature (T={crit_temp:.4f}, beta={crit_beta:.4f})...")
+        create_ising_animation(
+            L=param_L, 
+            beta=crit_beta, 
+            num_frames=animation_frames, 
+            interval_sweeps=animation_interval_sweeps,
+            initial_state='random',  # Random state for critical point
+            equilibrate_sweeps=animation_equilibrate_sweeps
+        )
+        
+        # 3. High Temperature (T = 5.0)
+        high_temp = 5.0
+        high_beta = 1.0 / high_temp
+        print(f"\nGenerating animation for high temperature (T={high_temp}, beta={high_beta:.4f})...")
+        create_ising_animation(
+            L=param_L, 
+            beta=high_beta, 
+            num_frames=animation_frames, 
+            interval_sweeps=animation_interval_sweeps,
+            initial_state='random',  # Random state for high temp
+            equilibrate_sweeps=animation_equilibrate_sweeps
+        )
+        
+        print("\nAnimations generated successfully!")
+    else:
+        print("\nMatplotlib or imageio not available. Cannot create animations.")
 
     print("\n--- Main script finished ---") 
