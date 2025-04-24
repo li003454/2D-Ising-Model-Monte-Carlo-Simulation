@@ -134,7 +134,7 @@ The simulation generates the following output files:
     - The magnetization plot clearly shows the transition from a disordered state (\(\\langle |M| \\rangle \\approx 0\)) at high T to an ordered state (\(\\langle |M| \\rangle \\to 1\)) at low T.
     - The susceptibility plot exhibits a sharp peak near the theoretical critical temperature \(T_c \\approx 2.269\), clearly signaling the phase transition. The denser sampling around \(T_c\) helps resolve the peak's shape.
 
-    ![Energy, Magnetization, and Susceptibility vs Temperature](image\ising_E_M_Chi_vs_T_L50_Eq5000_Me10000_enhanced.png)
+    ![Energy, Magnetization, and Susceptibility vs Temperature](image/ising_E_M_Chi_vs_T_L50_Eq5000_Me10000_enhanced.png)
 
 2.  **Animations**:
     - `ising_animation_L50_beta0.200.gif` (High Temperature, \(T = 5.0\))
@@ -147,13 +147,13 @@ The simulation generates the following output files:
     - **Low Temperature**: Shows the system quickly settling into a highly ordered state (ferromagnetic phase) with large domains of aligned spins.
 
     **High Temperature (β=0.200, T=5.0):**
-    ![High Temperature Animation](image\ising_animation_L50_beta0.200.gif)
+    ![High Temperature Animation](image/ising_animation_L50_beta0.200.gif)
 
     **Near Critical Temperature (β=0.441, T≈2.27):**
-    ![Critical Temperature Animation](image\ising_animation_L50_beta0.441.gif)
+    ![Critical Temperature Animation](image/ising_animation_L50_beta0.441.gif)
 
     **Low Temperature (β=0.600, T≈1.67):**
-    ![Low Temperature Animation](image\ising_animation_L50_beta0.600.gif)
+    ![Low Temperature Animation](image/ising_animation_L50_beta0.600.gif)
 
 ## References
 
