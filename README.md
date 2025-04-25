@@ -28,13 +28,13 @@ Main objectives:
 
 The Ising model describes a lattice system composed of spins (±1), where each spin interacts with its nearest neighbors. The Hamiltonian of the model (with \(J=1\)) is:
 
-\[ H = - \\sum_{\\langle i,j \\rangle} s_i s_j \]
+$H = - \\sum_{\\langle i,j \\rangle} s_i s_j$
 
 where \(\\langle i,j \\rangle\) denotes summation over nearest-neighbor pairs. In a two-dimensional system, the theoretically predicted critical temperature is:
 
-\[ T_c = \\frac{2}{\\ln(1 + \\sqrt{2})} \\approx 2.269... \]
+$T_c = \\frac{2}{\\ln(1 + \\sqrt{2})} \\approx 2.269...$
 
-Below \(T_c\), the system exhibits spontaneous magnetization (ferromagnetic phase), while above \(T_c\), it is in a disordered state (paramagnetic phase).
+Below \(T_c\), the system exhibits spontaneous magnetization (ferromagnetic phase), while above $T_c$, it is in a disordered state (paramagnetic phase).
 
 ## Project Structure
 
@@ -75,7 +75,7 @@ python ising_model.py
 This will execute the simulation using the default parameters defined in the script and save the output plots and animations.
 
 Current default parameters in the `__main__` block:
-- `param_L = 50` (resulting in a \(N=2L=100 \\times 100\) lattice)
+- `param_L = 50` (resulting in a $N=2L=100 \\times 100$ lattice)
 - `param_eq_sweeps = 500` (Number of equilibration sweeps)
 - `param_meas_sweeps = 1000` (Number of measurement sweeps per temperature point)
 - `temp_values = np.linspace(0.5, 5.0, 30)` (Range of temperatures T to scan)
@@ -84,8 +84,8 @@ Current default parameters in the `__main__` block:
 
 The simulation proceeds as follows:
 
-1.  **Temperature Scan**: The script iterates through a range of temperature values \(T\).
-2.  **Simulation per T**: For each \(T\), the corresponding inverse temperature \(\\beta = 1/T\) is calculated.
+1.  **Temperature Scan**: The script iterates through a range of temperature values $T$.
+2.  **Simulation per T**: For each $T$, the corresponding inverse temperature \(\\beta = 1/T\) is calculated.
 3.  **Temperature-Dependent Initialization**: Based on the temperature region, different initial states are chosen:
     - Low temperature (T < 2.0): Ordered state (all spins up) to achieve faster equilibration 
     - Near critical and high temperature (T ≥ 2.0): Random state for better exploration of phase space
