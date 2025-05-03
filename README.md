@@ -1,47 +1,93 @@
 # 2D Ising Model Monte Carlo Simulation Project
 
-This project implements a Monte Carlo simulation of the 2D Ising Model using the Metropolis-Hastings algorithm to study phase transition phenomena on a 100x100 lattice.
+This project implements a Monte Carlo simulation of the 2D Ising Model using the Metropolis-Hastings algorithm to study phase transition phenomena on a 100x100 lattice, both with and without an external magnetic field.
 
 ## Table of Contents
 
 1. [Project Overview](#project-overview)
 2. [Theoretical Background](#theoretical-background)
-3. [Project Structure](#project-structure)
-4. [Dependencies](#dependencies)
-5. [Usage](#usage)
-6. [Simulation Details](#simulation-details)
-7. [Performance and Accuracy Improvements](#performance-and-accuracy-improvements)
-8. [Results Analysis](#results-analysis)
-9. [References](#references)
+3. [Simulation with External Magnetic Field (H)](#simulation-with-external-magnetic-field-h)
+4. [Project Structure](#project-structure)
+5. [Dependencies](#dependencies)
+6. [Usage](#usage)
+7. [Simulation Details](#simulation-details)
+8. [Performance and Accuracy Improvements](#performance-and-accuracy-improvements)
+9. [Results Analysis](#results-analysis)
+10. [References](#references)
 
 ## Project Overview
 
-The 2D Ising model is a classic model in statistical physics for studying phase transitions. This project uses the Monte Carlo method (specifically Metropolis-Hastings) to simulate the 2D Ising model at different temperatures on a $100 \times 100$ lattice ($L=100$). It calculates key physical quantities such as Energy per site and magnetic Susceptibility, and visualizes the system's evolution through animations to investigate the phase transition behavior.
+The 2D Ising model is a classic model in statistical physics for studying phase transitions. This project uses the Monte Carlo method (specifically Metropolis-Hastings) to simulate the 2D Ising model at different temperatures on a $100 \times 100$ lattice ($L=100$). It calculates key physical quantities such as Energy per site and magnetic Susceptibility, and visualizes the system's evolution through animations to investigate the phase transition behavior. An extension is included to study the model under an external magnetic field.
 
 Main objectives:
 1. Implement the Metropolis algorithm for the 2D Ising model on a $100 \times 100$ grid.
-2. Calculate and plot the average Energy per site $\langle E \rangle / N^2$ and Susceptibility $\chi$ as functions of Temperature $T$. (Assuming $N=L^2$)
+2. Calculate and plot the average Energy per site $\langle E \rangle / N^2$, average Magnetization $\langle M \rangle / N^2$ (or $\langle |M| \rangle / N^2$ for H=0), and Susceptibility $\chi$ as functions of Temperature $T$.
 3. Visualize typical spin configuration dynamics at different temperatures using animations.
-4. Identify the critical temperature $T_c$ from the simulation results.
+4. Investigate the effect of a non-zero external magnetic field $H$ on the system's properties and phase transition.
+5. Identify the critical temperature $T_c$ from the simulation results (for H=0).
 
 ## Theoretical Background
 
-The Ising model describes a lattice system composed of spins (±1), where each spin interacts with its nearest neighbors. The Hamiltonian of the model (with \(J=1\)) is:
+The Ising model describes a lattice system composed of spins (±1), where each spin interacts with its nearest neighbors and potentially an external magnetic field $H$. The Hamiltonian of the model (with coupling constant $J=1$) is:
 
-\[ H = - \\sum_{\\langle i,j \\rangle} s_i s_j \]
+\[ H = - J \sum_{\langle i,j \rangle} s_i s_j - H \sum_i s_i \]
 
-where \(\\langle i,j \\rangle\) denotes summation over nearest-neighbor pairs. In a two-dimensional system, the theoretically predicted critical temperature is:
+where:
+*   $J$ is the coupling constant (set to $J=1$ for ferromagnetic interaction in this simulation).
+*   $\langle i,j \rangle$ denotes summation over nearest-neighbor pairs.
+*   $s_i$ is the spin (+1 or -1) at site $i$.
+*   $H$ is the external magnetic field strength.
+*   The first term represents the interaction energy between neighboring spins. Lower energy is achieved when neighbors align (for $J>0$).
+*   The second term represents the interaction energy with the external field. Lower energy is achieved when spins align with the field $H$ (e.g., spins prefer +1 if $H>0$).
 
-\[ T_c = \\frac{2}{\\ln(1 + \\sqrt{2})} \\approx 2.269... \]
+In the absence of an external field ($H=0$), a two-dimensional system exhibits a second-order phase transition at the critical temperature:
 
-Below \(T_c\), the system exhibits spontaneous magnetization (ferromagnetic phase), while above \(T_c\), it is in a disordered state (paramagnetic phase).
+\[ T_c(H=0) = \frac{2J}{k_B \ln(1 + \sqrt{2})} \approx 2.269 \frac{J}{k_B} \]
+
+(In our simulation, we set $J=1$ and $k_B=1$, so $T_c(H=0) \approx 2.269$). Below $T_c$, the system exhibits spontaneous magnetization (ferromagnetic phase), while above $T_c$, it is in a disordered state (paramagnetic phase).
+
+## Simulation with External Magnetic Field (H)
+
+This project includes an extension (`ising_model_with_field.py`) to investigate the behavior of the 2D Ising model under the influence of a uniform external magnetic field, $H$.
+
+### Principle: How H Changes the Physics
+
+The external field term $-H \sum_i s_i$ fundamentally changes the system's energetics and behavior:
+
+1.  **Energy Landscape**: The field introduces a bias. If $H>0$, states with more spins pointing up (+1) have lower energy. If $H<0$, states with more spins pointing down (-1) are favored. This explicitly breaks the up/down symmetry present when $H=0$.
+2.  **Metropolis Update**: The core of the simulation, the Metropolis step, relies on the energy change $\Delta E$ resulting from flipping a single spin $s_k$. With the field, this becomes:
+    \[ \Delta E = E_{\text{new}} - E_{\text{old}} = (E_{\text{interaction}}^{\text{new}} - H s_{\text{new}}) - (E_{\text{interaction}}^{\text{old}} - H s_{\text{old}}) \]
+    Since $s_{\text{new}} = -s_k$ and $s_{\text{old}} = s_k$, and the interaction energy change is $2 J s_k \sum_{j \in \text{nn}(k)} s_j$, we get:
+    \[ \Delta E = \underbrace{2 J s_k \sum_{j \in \text{nn}(k)} s_j}_{\Delta E_{\text{interaction}}} + \underbrace{2 H s_k}_{\Delta E_{\text{field}}} \]
+    (with $J=1$ in the code). The Metropolis acceptance probability $P(\text{accept}) = \min(1, e^{-\beta \Delta E})$ now incorporates this field contribution. A flip that aligns the spin *against* a positive field $H$ (i.e., flipping +1 to -1 when $H>0$) results in a positive $\Delta E_{\text{field}}$, making the flip less probable.
+
+### Implementation in `ising_model_with_field.py`
+
+*   The Hamiltonian term is added to `calculate_total_energy`.
+*   The $\Delta E$ calculation in `calculate_energy_change` and within `metropolis_sweep` includes the $2 H s_k$ term.
+*   The simulation driver `run_simulation` and animator `create_ising_animation` accept $H$ as an argument.
+*   Observables are calculated appropriately for $H \neq 0$: average magnetization $\langle M \rangle$ (not absolute) and susceptibility $\chi = \beta N^2 (\langle M^2 \rangle - \langle M \rangle^2)$.
+
+### Results Analysis (Effect of H)
+
+Comparing simulations with $H=0$ and $H \neq 0$ (e.g., $H=0.1$ as run) reveals key differences:
+
+*   **Magnetization $\langle M \rangle$**: 
+    *   For $H=0$, $\langle |M| \rangle / N^2$ shows a sharp drop towards zero near $T_c$, indicating the loss of spontaneous magnetization.
+    *   For $H=0.1$, $\langle M \rangle / N^2$ remains significantly positive even well above $T_c(H=0)$. The field induces magnetization at all temperatures. The transition from the highly ordered low-T state to the less ordered high-T state becomes a smooth *crossover* rather than a sharp phase transition. This is clearly visible in the plot `image/ising_E_M_Chi_vs_T_L50_H0.10_Eq5000_Me10000.png` compared to the $H=0$ case.
+*   **Susceptibility $\chi$**:
+    *   For $H=0$, $\chi$ exhibits a sharp, potentially divergent peak at $T_c$, signaling the large fluctuations characteristic of a second-order phase transition.
+    *   For $H=0.1$, the peak in $\chi$ is significantly suppressed (lower maximum value) and broadened. While there is still a temperature region of maximum response to the field (the peak location), the divergence is removed. The external field stabilizes the system against large-scale fluctuations.
+*   **Animations**: Animations for $H=0.1$ show a visible preference for the +1 state (black pixels) compared to $H=0$ animations at the same temperature, especially noticeable near and above $T_c(H=0)$. The domain dynamics are still present but biased by the field.
+
+In essence, any non-zero external field destroys the true second-order phase transition of the 2D Ising model. The singularity at $T_c$ is smoothed into a crossover region.
 
 ## Project Structure
 
 The project consists of two main Python files:
 
-1. `ising_model.py`: Implements the simulation for the standard Ising model (\(H=0\)).
-2. `ising_model_with_field.py`: Implements the simulation including an external magnetic field (\(H \\neq 0\)).
+1. `ising_model.py`: Implements the simulation for the standard Ising model ($H=0$).
+2. `ising_model_with_field.py`: Implements the simulation including an external magnetic field ($H \neq 0$).
 
 Each file contains the following logical modules:
 
@@ -98,15 +144,15 @@ Current default parameters in the `__main__` block:
 
 The simulation process, whether with or without the field, follows these steps:
 
-1.  **Temperature Scan**: The script iterates through a range of temperature values \(T\).
-2.  **Simulation per T**: For each \(T\), the corresponding inverse temperature \(\\beta = 1/T\) is calculated.
+1.  **Temperature Scan**: The script iterates through a range of temperature values $T$.
+2.  **Simulation per T**: For each $T$, the corresponding inverse temperature $\beta = 1/T$ is calculated.
 3.  **Temperature-Dependent Initialization**: Based on the temperature region, different initial states are chosen:
     - Low temperature (T < 2.0): Ordered state (all spins up) to achieve faster equilibration 
     - Near critical and high temperature (T ≥ 2.0): Random state for better exploration of phase space
-4.  **Equilibration**: The system evolves for `param_eq_sweeps` Monte Carlo sweeps to reach thermal equilibrium. A sweep consists of \(N \\times N\) Metropolis steps.
-5.  **Measurement**: After equilibration, the simulation runs for `param_meas_sweeps` sweeps. During this phase, the total energy \(E\) and magnetization \(M\) are measured at regular intervals.
-6.  **Averaging**: The average energy per site \(\\langle E \\rangle / N^2\), average absolute magnetization \(\\langle |M| \\rangle\), and the magnetic susceptibility \(\\chi = \\beta N^2 (\\langle M^2 \\rangle - \\langle M \\rangle^2)\) are calculated from the measurements collected during this phase.
-7.  **Plotting**: After scanning all temperatures, the script plots \(\\langle E \\rangle / N^2\), \(\\langle |M| \\rangle\), and \(\\chi\) vs \(T\) side-by-side.
+4.  **Equilibration**: The system evolves for `param_eq_sweeps` Monte Carlo sweeps to reach thermal equilibrium. A sweep consists of $N \times N$ Metropolis steps.
+5.  **Measurement**: After equilibration, the simulation runs for `param_meas_sweeps` sweeps. During this phase, the total energy $E$ and magnetization $M$ are measured at regular intervals.
+6.  **Averaging**: The average energy per site $\langle E \rangle / N^2$, average absolute magnetization $\langle |M| \rangle$, and the magnetic susceptibility $\chi = \beta N^2 (\langle M^2 \rangle - \langle M \rangle^2)$ are calculated from the measurements collected during this phase.
+7.  **Plotting**: After scanning all temperatures, the script plots $\langle E \rangle / N^2$, $\langle |M| \rangle$, and $\chi$ vs $T$ side-by-side.
 8.  **Animation**: Finally, simulations are run at three specific temperature points (T≈1.67, T≈2.269, T=5.0) corresponding to low, critical, and high temperatures, and the lattice evolution is saved as GIF animations.
 
 ## Performance and Accuracy Improvements
@@ -141,32 +187,40 @@ These improvements result in significantly smoother curves, more accurate suscep
 
 The simulation generates output plots and animations saved in the `image/` directory. The filenames indicate the parameters used, including the lattice size (L), field strength (H, if non-zero), and sweep counts.
 
-1.  **Energy, Magnetization, and Susceptibility Plot**: `ising_E_M_Chi_vs_T_L50_Eq5000_Me10000_enhanced.png`
-    This plot shows the average energy per site, average absolute magnetization, and the magnetic susceptibility as functions of temperature in three side-by-side panels.
-    - The energy plot shows a continuous change but with a steep slope (indicating high specific heat) near \(T_c\).
-    - The magnetization plot clearly shows the transition from a disordered state (\(\\langle |M| \\rangle \\approx 0\)) at high T to an ordered state (\(\\langle |M| \\rangle \\to 1\)) at low T.
-    - The susceptibility plot exhibits a sharp peak near the theoretical critical temperature \(T_c \\approx 2.269\), clearly signaling the phase transition. The denser sampling around \(T_c\) helps resolve the peak's shape.
+1.  **Energy, Magnetization, and Susceptibility Plot**:
+    *   Example (\(H=0\)): `ising_E_M_Chi_vs_T_L50_Eq5000_Me10000_enhanced.png`
+    *   Example (\(H=0.1\)): `ising_E_M_Chi_vs_T_L50_H0.10_Eq5000_Me10000.png`
 
-    ![Energy, Magnetization, and Susceptibility vs Temperature](image/ising_E_M_Chi_vs_T_L50_Eq5000_Me10000_enhanced.png)
+    These plots show the relevant observables vs. temperature. When \(H \neq 0\), expect to see a non-zero magnetization above \(T_c(H=0)\) and a smoother, broader peak in susceptibility compared to the \(H=0\) case.
+
+    *Plot for H=0:*
+    ![Energy, Magnetization, and Susceptibility vs Temperature (H=0)](image/ising_E_M_Chi_vs_T_L50_Eq5000_Me10000_enhanced.png)
+
+    *Plot for H=0.1:*
+    ![Energy, Magnetization, and Susceptibility vs Temperature (H=0.1)](image/ising_E_M_Chi_vs_T_L50_H0.10_Eq5000_Me10000.png)
 
 2.  **Animations**:
-    - `ising_animation_L50_beta0.200.gif` (High Temperature, \(T = 5.0\))
-    - `ising_animation_L50_beta0.441.gif` (Near Critical Temperature, \(T \\approx 2.27\))
-    - `ising_animation_L50_beta0.600.gif` (Low Temperature, \(T \\approx 1.67\))
+    Filenames include `L`, `H` (if non-zero), and `beta`.
+    *   Example (\(H=0\)): `ising_animation_L50_beta0.441.gif`
+    *   Example (\(H=0.1\)): `ising_animation_L50_H0.10_beta0.441.gif`
 
-    These animations visualize the spin configurations (white for -1, black for +1) evolving over time:
-    - **High Temperature**: Shows a rapidly fluctuating, disordered state (paramagnetic phase).
-    - **Near Critical Temperature**: Displays large-scale fluctuations with clusters of spins of various sizes forming and dissolving, characteristic of critical phenomena.
-    - **Low Temperature**: Shows the system quickly settling into a highly ordered state (ferromagnetic phase) with large domains of aligned spins.
+    The animations visualize spin configurations. With \(H>0\), expect a stronger tendency for spins to align in the +1 state (black) compared to the \(H=0\) case at the same temperature.
 
+    *Animations for H=0:*
     **High Temperature (β=0.200, T=5.0):**
-    ![High Temperature Animation](image/ising_animation_L50_beta0.200.gif)
-
+    ![High Temperature Animation (H=0)](image/ising_animation_L50_beta0.200.gif)
     **Near Critical Temperature (β=0.441, T≈2.27):**
-    ![Critical Temperature Animation](image/ising_animation_L50_beta0.441.gif)
-
+    ![Critical Temperature Animation (H=0)](image/ising_animation_L50_beta0.441.gif)
     **Low Temperature (β=0.600, T≈1.67):**
-    ![Low Temperature Animation](image/ising_animation_L50_beta0.600.gif)
+    ![Low Temperature Animation (H=0)](image/ising_animation_L50_beta0.600.gif)
+
+    *Animations for H=0.1:*
+    **High Temperature (β=0.200, T=5.0, H=0.1):**
+    ![High Temperature Animation (H=0.1)](image/ising_animation_L50_H0.10_beta0.200.gif)
+    **Near Critical Temperature (β=0.441, T≈2.27, H=0.1):**
+    ![Critical Temperature Animation (H=0.1)](image/ising_animation_L50_H0.10_beta0.441.gif)
+    **Low Temperature (β=0.600, T≈1.67, H=0.1):**
+    ![Low Temperature Animation (H=0.1)](image/ising_animation_L50_H0.10_beta0.600.gif)
 
 ## References
 
